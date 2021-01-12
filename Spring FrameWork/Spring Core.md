@@ -576,7 +576,7 @@ public class SimpleMovieLister {
 >
 > 与典型情况（没有循环依赖关系）不同，Bean A和Bean B之间的循环依赖关系迫使其中一个Bean在完全初始化之前被注入另一个Bean（经典的“鸡与蛋”场景）。
 
-通常，您可以信任Spring做正确的事。 它在容器加载时检测配置问题，例如对不存在的Bean的引用和循环依赖项。 在实际创建bean时，Spring设置属性并尽可能晚地解决依赖关系。 这意味着，如果创建对象或其依赖项之一有问题，则正确加载了Spring的容器以后可以在您请求对象时生成异常-例如，bean会因丢失或无效属性而抛出异常。这可能会延迟某些配置问题的可见性，这就是为什么默认情况下ApplicationContext实现会预先实例化单例bean的原因。 在实际需要这些bean之前需要花一些前期时间和内存来创建它们，您会在创建ApplicationContext时发现配置问题，而不是稍后。 您仍然可以覆盖此默认行为，以便单例bean延迟初始化，而不是预先实例化。
+通常，您可以信任Spring做正确的事。 它在容器加载时检测配置问题，例如对不存在的Bean的引用和循环依赖项。 Spring设置属性并尽可能晚地解决依赖关系--在实际创建bean时。 这意味着，如果创建对象或其依赖项之一有问题，则正确加载了Spring的容器以后可以在您请求对象时抛出异常-例如，bean会因不存在或无效属性而抛出异常。这样可能会延迟某些配置问题的可见性，所以这就是为什么默认情况下ApplicationContext实现会预先实例化单例bean的原因。 在实际需要这些bean之前需要花一些前期时间和内存来创建它们，您会在创建ApplicationContext时发现配置问题，而不是稍后。 您仍然可以覆盖此默认行为，以便单例bean延迟初始化，而不是预先实例化。
 
 如果不存在循环依赖关系，则在将一个或多个协作Bean注入到从属Bean中时，每个协作Bean在注入到从属Bean中之前都已完全配置。 这意味着，如果bean A依赖于bean B，则Spring IoC容器会在对bean A调用setter方法之前完全配置beanB。换句话说，被实例化的bean（如果它不是预先实例化的单例） ），它的依赖项被设置，并调用了相关的生命周期方法（例如已配置的init方法或InitializingBean回调方法）。
 
@@ -702,19 +702,425 @@ public class ExampleBean {
 
 ### 1.4.2.  依赖配置详解
 
+如上一节所述，您可以将bean属性和构造器参数定义为对容器中其他bean（协作者）的引用或内联定义的值。 Spring的基于XML的配置元数据为达到此目的在其`<property />`和`<constructor-arg />`元素中支持子元素类型。
+
+#### 直接值（原语，Strings等）
+
+`<property />`元素的`value`属性将属性或构造器参数指定为人类可读的字符串表示形式。 Spring的转换服务用于将这些值从字符串转换为属性或参数的实际类型。 以下示例显示了设置的各种值：
+
+```xml
+<bean id="myDataSource" class="org.apache.commons.dbcp.BasicDataSource" destroy-method="close">
+    <!-- results in a setDriverClassName(String) call -->
+    <property name="driverClassName" value="com.mysql.jdbc.Driver"/>
+    <property name="url" value="jdbc:mysql://localhost:3306/mydb"/>
+    <property name="username" value="root"/>
+    <property name="password" value="misterkaoli"/>
+</bean>
+```
+
+下面的示例使用p-namespace进行更简洁的XML配置
+
+```xml
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:p="http://www.springframework.org/schema/p"
+    xsi:schemaLocation="http://www.springframework.org/schema/beans
+    https://www.springframework.org/schema/beans/spring-beans.xsd">
+
+    <bean id="myDataSource" class="org.apache.commons.dbcp.BasicDataSource"
+        destroy-method="close"
+        p:driverClassName="com.mysql.jdbc.Driver"
+        p:url="jdbc:mysql://localhost:3306/mydb"
+        p:username="root"
+        p:password="misterkaoli"/>
+
+</beans>
+```
+
+前面的XML更简洁。 但是，除非在创建bean定义时使用支持自动属性补全的IDE（例如IntelliJ IDEA或Eclipse的Spring Tools），否则错误是在运行时而不是编码时发现的。 强烈建议您使用此类IDE帮助开发。
+
+您还可以配置`java.util.Properties`实例，如下所示：
+
+```xml
+<bean id="mappings"
+    class="org.springframework.context.support.PropertySourcesPlaceholderConfigurer">
+
+    <!-- typed as a java.util.Properties -->
+    <property name="properties">
+        <value>
+            jdbc.driver.className=com.mysql.jdbc.Driver
+            jdbc.url=jdbc:mysql://localhost:3306/mydb
+        </value>
+    </property>
+</bean>
+```
+
+Spring容器通过使用JavaBeans `PropertyEditor`机制将`<value />`元素内的文本转换为`java.util.Properties`实例。 这很方便，并且是Spring团队偏爱使用嵌套的`<value />`元素而不是`value`属性的几个地方之一。
+
+**`idref`元素**
+
+`idref`元素只是将容器中另一个bean的id（字符串值-不是引用）传递给`<constructor-arg />`或`<property />`元素的一种防错方法。 以下示例显示了如何使用它：
+
+```xml
+<bean id="theTargetBean" class="..."/>
+
+<bean id="theClientBean" class="...">
+    <property name="targetName">
+        <idref bean="theTargetBean"/>
+    </property>
+</bean>
+```
+
+前面的bean定义代码片段(在运行时)与下面的代码片段完全等价
+
+```xml
+<bean id="theTargetBean" class="..." />
+
+<bean id="client" class="...">
+    <property name="targetName" value="theTargetBean"/>
+</bean>
+```
+
+第一种形式优于第二种形式，因为使用idref标记可使容器在部署时验证所引用的名为bean的实际存在。 在第二个变体中，不对传递给客户端bean的targetName属性的值执行验证。 拼写错误仅在实际实例化客户端bean时才发现（最有可能导致致命的结果）。 如果客户端Bean是原型Bean，则可能在部署容器很久之后才发现此错误和所产生的异常。
+
+> 这里传的都是字面量，而不是bean引用，idref与value的区别只是前者会做校验。
+>
+> 在4.0 Bean XSD中不再支持idref元素上的local属性，因为它不再提供常规Bean引用上的值（这里不好理解，之前local属性的作用是：只能指定与当前配置的对象在同一个配置文件的对象定义的名称，所以这里认为5.3.2把这个属性废弃就行了）。 升级到4.0模式时，将现有的idref local属性更改为idref bean。
+
+`<idref />`元素带来价值的一个常见地方（至少在Spring 2.0之前的版本中）是在ProxyFactoryBean bean定义中配置AOP拦截器。 在指定拦截器名称时使用`<idref />`元素可防止您拼写错误的拦截器ID。
+
+#### 引用其他Bean
+
+ref元素是`<constructor-arg />`或`<property />`定义元素内的最后一个元素。 在这里，您将Bean的指定属性的值设置为对容器管理的另一个Bean（协作者）的引用。 引用的bean是要设置其属性的bean的依赖，并且在设置属性之前根据需要对其进行初始化。 （如果协作者是单例bean，则它可能已经由容器初始化了。）所有引用最终都是对另一个对象的引用。 作用于和验证取决于您是通过`bean`还是`parent`指定另一个对象的ID或名称。
+
+通过`<ref />`标记的bean属性指定目标bean是最通用的形式，并且允许创建对同一容器或父容器中任何bean的引用，而不管它是否在同一XML文件中。 bean属性的值可以与目标bean的id属性相同，也可以与目标bean的name属性中的值之一相同。 下面的示例演示如何使用ref元素：
+
+```xml
+<ref bean="someBean"/>
+```
+
+通过`parent`属性指定目标Bean将创建对当前容器的父容器中的Bean的引用。 `parent`属性的值可以与目标Bean的id属性或目标Bean的名称属性中的值之一相同。 目标Bean必须位于当前容器的父容器中。 在容器具有层次结构并且要包装一个与在父容器中已存在的bean具有相同名称的代理bean时，才应该使用`parent`属性。 以下清单显示了如何使用`parent`属性：
+
+```xml
+<!-- in the parent context -->
+<bean id="accountService" class="com.something.SimpleAccountService">
+    <!-- insert dependencies as required as here -->
+</bean>
+```
+
+```xml
+<!-- in the child (descendant) context -->
+<bean id="accountService" <!-- bean name is the same as the parent bean -->
+    class="org.springframework.aop.framework.ProxyFactoryBean">
+    <property name="target">
+        <ref parent="accountService"/> <!-- notice how we refer to the parent bean -->
+    </property>
+    <!-- insert other configuration and dependencies as required here -->
+</bean>
+```
+
+> ref元素的`local`属性在4.0 Bean XSD中不再受支持，因为它不再提供常规Bean引用上的值。 升级到4.0模式时，将现有的ref local更改为ref bean。
+
+#### 内部Beans
+
+`<property />`或`<constructor-arg />`元素内的`<bean />`元素定义了一个内部bean，如以下示例所示：
+
+```xml
+<bean id="outer" class="...">
+    <!-- instead of using a reference to a target bean, simply define the target bean inline -->
+    <property name="target">
+        <bean class="com.example.Person"> <!-- this is the inner bean -->
+            <property name="name" value="Fiona Apple"/>
+            <property name="age" value="25"/>
+        </bean>
+    </property>
+</bean>
+```
+
+内部bean定义不需要定义ID或名称。 如果指定，则容器不使用该值作为标识符。 容器在创建时也会忽略`scope`标志，因为内部Bean始终是匿名的，并且始终与外部Bean一起创建。 不能独立访问内部bean，也不能将它们注入到协作bean中（除了封装的bean）。
+
+#### 集合
+
+`<list />`，`<set />`，`<map />`和`<props />`元素分别设置Java集合类型的List，Set，Map和Properties的属性和参数。 以下示例显示了如何使用它们：
+
+```xml
+<bean id="moreComplexObject" class="example.ComplexObject">
+    <!-- results in a setAdminEmails(java.util.Properties) call -->
+    <property name="adminEmails">
+        <props>
+            <prop key="administrator">administrator@example.org</prop>
+            <prop key="support">support@example.org</prop>
+            <prop key="development">development@example.org</prop>
+        </props>
+    </property>
+    <!-- results in a setSomeList(java.util.List) call -->
+    <property name="someList">
+        <list>
+            <value>a list element followed by a reference</value>
+            <ref bean="myDataSource" />
+        </list>
+    </property>
+    <!-- results in a setSomeMap(java.util.Map) call -->
+    <property name="someMap">
+        <map>
+            <entry key="an entry" value="just some string"/>
+            <entry key ="a ref" value-ref="myDataSource"/>
+        </map>
+    </property>
+    <!-- results in a setSomeSet(java.util.Set) call -->
+    <property name="someSet">
+        <set>
+            <value>just some string</value>
+            <ref bean="myDataSource" />
+        </set>
+    </property>
+</bean>
+```
+
+其中，map的key或者value，或set的value，可以是以下任一元素：
+
+```xml
+bean | ref | idref | list | set | map | props | value | null
+```
+
+**集合合并**
+
+Spring容器还支持合并集合。 应用程序开发人员可以定义父`<list />`，`<map />`，`<set />`或`<props />`元素，并具有从父集合继承并覆盖值的子元素<list />，<map />，<set />或<props />。 也就是说，子集合的值是合并父集合和子集合的元素的结果，子集合的元素会覆盖父集合中指定的值。
+
+下面的示例演示了集合合并：
+
+```xml
+<beans>
+    <bean id="parent" abstract="true" class="example.ComplexObject">
+        <property name="adminEmails">
+            <props>
+                <prop key="administrator">administrator@example.com</prop>
+                <prop key="support">support@example.com</prop>
+            </props>
+        </property>
+    </bean>
+    <bean id="child" parent="parent">
+        <property name="adminEmails">
+            <!-- the merge is specified on the child collection definition -->
+            <props merge="true">
+                <prop key="sales">sales@example.com</prop>
+                <prop key="support">support@example.co.uk</prop>
+            </props>
+        </property>
+    </bean>
+<beans>
+```
+
+注意子bean定义的adminEmails属性的`<props />`元素上使用`merge = true`属性。 当子bean由容器解析并实例化后，生成的实例具有adminEmails Properties集合，其中包含将子bean的adminEmails集合与父bean的adminEmails集合合并的结果。 以下清单显示了结果：
+
+```
+administrator=administrator@example.com
+sales=sales@example.com
+support=support@example.co.uk
+```
+
+子`Properties`集合的值集继承了父`<props />`的所有属性，子属性的`support`值覆盖了父集合中的值。
+
+此合并行为类似地适用于`<list />`，`<map />`和`<set />`集合类型。 在`<list />`元素的特定情况下，将维护与List集合类型关联的语义（即，值的有序集合的概念）。 父级的值先于子级列表的所有值。 对于Map，Set和Properties集合类型，不存在排序。 因此，对于容器内部使用的关联Map，Set和Properties实现类型的集合，没有有效的排序语义。
+
+此合并行为类似地适用于<list />，<map />和<set />集合类型。 在<list />元素的特定情况下，将维护与List集合类型关联的语义（即，值的有序集合的概念）。 父级的值先于子级列表的所有值。 对于Map，Set和Properties集合类型，不存在排序。 因此，对于容器内部使用的关联Map，Set和Properties实现类型基础的集合类型，没有任何排序语义有效。
+
+**集合合并的限制**
+
+您不能合并不同的集合类型(如Map和List)。如果您尝试这样做，则会抛出适当的异常。必须在下层的继承的子集合定义上指定merge属性。在父集合定义上指定merge属性是多余的，并且不会导致所需的合并。
+
+**强类型的集合**
+
+随着Java 5中泛型类型的引入，您可以使用强类型集合。 也就是说，可以声明一个Collection类型，使其只能包含（例如）String元素。 如果使用Spring将强类型的Collection依赖注入到Bean中，则可以利用Spring的类型转换支持，以便在将强类型的Collection实例的元素添加到Bean中之前，先将其转换为适当的类型。 以下Java类和bean定义显示了如何执行此操作：
+
+```java
+public class SomeClass {
+
+    private Map<String, Float> accounts;
+
+    public void setAccounts(Map<String, Float> accounts) {
+        this.accounts = accounts;
+    }
+}
+```
+
+```xml
+<beans>
+    <bean id="something" class="x.y.SomeClass">
+        <property name="accounts">
+            <map>
+                <entry key="one" value="9.99"/>
+                <entry key="two" value="2.75"/>
+                <entry key="six" value="3.99"/>
+            </map>
+        </property>
+    </bean>
+</beans>
+```
+
+当准备注入`something` bean的accounts属性时，可以通过反射获得有关强类型Map <String，Float>的元素类型的泛型信息。 因此，Spring的类型转换基础架构将各种值元素识别为Float类型，并将字符串值（9.99、2.75和3.99）转换为实际的Float类型。
+
+#### Null和空String
+
+Spring将属性之类的空参数视为空字符串。以下基于xml的配置元数据片段将email属性设置为空字符串值("")。
+
+```xml
+<bean class="ExampleBean">
+    <property name="email" value=""/>
+</bean>
+```
+
+等价于：
+
+```java
+exampleBean.setEmail("");
+```
+
+`<null />`元素处理空值。 以下清单显示了一个示例：
+
+```xml
+<bean class="ExampleBean">
+    <property name="email">
+        <null/>
+    </property>
+</bean>
+```
+
+等价于：
+
+```java
+exampleBean.setEmail(null);
+```
+
+#### p-namespace
+
+通过p-namespace，您可以使用bean元素的属性（而不是嵌套的`<property />`元素）来描述协作bean的属性值，或同时使用这两者。
+
+Spring支持带有命名空间的可扩展配置格式，这些名称空间基于XML Schema定义。 本章讨论的bean配置格式在XML Schema文档中定义。 但是，p-namespace未在XSD文件中定义，仅存在于Spring Core中。
+
+下面的示例显示了两个解析到相同结果的XML片段(第一个使用标准XML格式，第二个使用p-namespace)：
+
+```xml
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:p="http://www.springframework.org/schema/p"
+    xsi:schemaLocation="http://www.springframework.org/schema/beans
+        https://www.springframework.org/schema/beans/spring-beans.xsd">
+
+    <bean name="classic" class="com.example.ExampleBean">
+        <property name="email" value="someone@somewhere.com"/>
+    </bean>
+
+    <bean name="p-namespace" class="com.example.ExampleBean"
+        p:email="someone@somewhere.com"/>
+</beans>
+```
+
+该示例显示了bean定义中的p-namespace中的一个名为email的属性。这告诉Spring包含一个属性声明。如前所述，p-namespace没有schema 定义，因此可以将属性的名称设置为属性名。
+
+下一个示例包括另外两个bean定义，它们都引用了另一个bean：
+
+```xml
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:p="http://www.springframework.org/schema/p"
+    xsi:schemaLocation="http://www.springframework.org/schema/beans
+        https://www.springframework.org/schema/beans/spring-beans.xsd">
+
+    <bean name="john-classic" class="com.example.Person">
+        <property name="name" value="John Doe"/>
+        <property name="spouse" ref="jane"/>
+    </bean>
+
+    <bean name="john-modern"
+        class="com.example.Person"
+        p:name="John Doe"
+        p:spouse-ref="jane"/>
+
+    <bean name="jane" class="com.example.Person">
+        <property name="name" value="Jane Doe"/>
+    </bean>
+</beans>
+```
+
+此示例不仅包括使用p-namespace的属性值，而且还使用特殊格式来声明属性引用。 第一个bean定义使用`<property name="spouse" ref="jane" />`创建从bean john到bean jane的引用，而第二个bean定义使用`p:spouse-ref="jane"`属性做相同的事情。 在这种情况下，`spouse`是属性名称，而`-ref`部分表示这不是一个直接值，而是对另一个bean的引用。
+
+> p-namespace不像标准XML格式那么灵活。例如，声明属性引用的格式与以Ref结尾的属性发生冲突(我验证仍能正确解析)，而标准XML格式没有。我们建议您谨慎地选择自己的方法，并将其告知团队成员，以避免生成同时使用这三种方法的XML文档。
 
 
 
+#### c-namespace
+
+与p-namespace的XML快捷方式类似，Spring 3.1中引入的c-namespace允许内联属性来配置构造函数参数，而不是嵌套的`constructor-arg`元素。
+
+下面的示例使用`c:`namespace来做和基于构造器的依赖注入相同的事情
+
+```xml
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:c="http://www.springframework.org/schema/c"
+    xsi:schemaLocation="http://www.springframework.org/schema/beans
+        https://www.springframework.org/schema/beans/spring-beans.xsd">
+
+    <bean id="beanTwo" class="x.y.ThingTwo"/>
+    <bean id="beanThree" class="x.y.ThingThree"/>
+
+    <!-- traditional declaration with optional argument names -->
+    <bean id="beanOne" class="x.y.ThingOne">
+        <constructor-arg name="thingTwo" ref="beanTwo"/>
+        <constructor-arg name="thingThree" ref="beanThree"/>
+        <constructor-arg name="email" value="something@somewhere.com"/>
+    </bean>
+
+    <!-- c-namespace declaration with argument names -->
+    <bean id="beanOne" class="x.y.ThingOne" c:thingTwo-ref="beanTwo"
+        c:thingThree-ref="beanThree" c:email="something@somewhere.com"/>
+
+</beans>
+```
+
+c:命名空间使用与p: 相同的约定(bean引用的末尾是-ref)，通过它们的名称设置构造器参数。类似地，它需要在XML文件中声明，即使它不是在XSD模式中定义的(它存在于Spring Core中)。
+
+对于极少数情况下无法使用构造函数参数名称的情况（通常，如果字节码是在没有调试信息的情况下编译的），则可以使用参数索引，如下所示：
+
+```xml
+<!-- c-namespace index declaration -->
+<bean id="beanOne" class="x.y.ThingOne" c:_0-ref="beanTwo" c:_1-ref="beanThree"
+    c:_2="something@somewhere.com"/>
+```
+
+> 由于XML语法的原因，索引表示法需要有前导符号 "_"，因为XML属性名不能以数字开头(尽管有些ide允许)。`<constructor-arg>`元素也可以使用相应的索引表示法，但不常用，因为在那里声明的普通顺序通常就足够了。
+
+#### 复合属性名
+
+在设置bean属性时，可以使用复合或嵌套属性名，只要路径的所有组件(最终属性名除外)都不是null的。考虑下面的bean定义
+
+```xml
+<bean id="something" class="things.ThingOne">
+    <property name="fred.bob.sammy" value="123" />
+</bean>
+```
+
+`something` bean有一个`fred`属性，它有一个`bob`属性，bob还有一个sammy属性，最后的sammy属性被设置为值123。为了正常解析，在构造bean之后，`something`的fred属性和fred的bob属性不能为空。否则，抛出NullPointerException。
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:p="http://www.springframework.org/schema/p"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">
+<bean id="student" class="pre.chl.spring.core.Student" p:ref-ref="courseRef">
+    <!--如果把下面这行注释了就会抛异常NullValueInNestedPathException
+	如果不注释，score最后的值也是99，可见p命名空间和原始标签混用可能会出现冲	突，应该只会选原始标签元素去解析-->
+    <!--<property name="ref" ref="courseRef"/>-->
+    <property name="ref.score" value="99"/>
+</bean>
+    <bean id="courseRef" class="pre.chl.spring.core.Course" p:score="100"/>
+</beans>
+```
 
 
 
-
-
-
-
-
-
-
+### 1.4.3. depends-on
 
 
 

@@ -4,4 +4,4 @@
 - 开发指南
   - [IDEA使用技巧](/tutorial/idea使用技巧.md)
 - 读书笔记
-  - [Java8实战](/notes/java8-in-action.md)  
+  - [Java8实战](/notes/Java8-in-action.md)

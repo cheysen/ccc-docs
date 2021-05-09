@@ -4,7 +4,7 @@
 
 # 1.Ioc容器
 
-##  1.1. Spring Ioc容器和Beans介绍
+## 1.1. Spring Ioc容器和Beans介绍
 
 本章介绍了控制反转（IoC）原理的Spring框架实现。 IoC也称为依赖注入（DI）。 在此过程中，对象仅通过构造函数参数，工厂方法的参数或在构造后或从工厂方法返回后在对象实例上设置的属性来定义其依赖项（即与它们一起使用的其他对象） 。 然后，容器在创建bean时注入那些依赖项。 此过程从根本上讲是bean本身通过使用类的直接构造或诸如[服务定位器模式](#服务定位器模式)之类的机制来控制其依赖项的实例或位置的逆过程（因此称为控制的反转）。
 
@@ -1412,6 +1412,69 @@ Str
 
 ## 1.5. Bean作用域
 
+创建一个bean定义时，将创建一个配置，该配置用于创建该bean定义所定义的类的实例。 bean定义是配置的思想很重要，因为它意味您可以从一个配置中创建一个类的许多对象实例。
+
+您不仅可以控制要插入到从特定bean定义创建的对象中的各种依赖项和配置值，还可以控制从特定bean定义创建的对象的作用域。 这种方法功能强大且灵活，因为您可以选择通过配置创建的对象的作用域，而不必在Java类级别上bake（这里不知道如何翻译）对象的作用域。 可以将Bean定义为部署在多个作用域之一中。 Spring框架支持六个作用域，其中四个只有在使用Web感知的`ApplicationContext`时才可用。 您还可以创建自定义作用域。
+
+| Scope                                                        | Description                                                  |
+| :----------------------------------------------------------- | :----------------------------------------------------------- |
+| [singleton](https://docs.spring.io/spring-framework/docs/current/reference/html/core.html#beans-factory-scopes-singleton) | （默认值）将每个Spring IoC容器的单个bean定义作用域限定为单个对象实例。 |
+| [prototype](https://docs.spring.io/spring-framework/docs/current/reference/html/core.html#beans-factory-scopes-prototype) | 将单个bean定义的作用域限定为任意数量的对象实例。             |
+| [request](https://docs.spring.io/spring-framework/docs/current/reference/html/core.html#beans-factory-scopes-request) | 将单个bean定义的作用域限定为单个HTTP请求的生命周期内。 也就是说，每个HTTP请求都有一个自己的bean实例，它是在单个bean定义的基础上创建的。 仅在web感知的Spring `ApplicationContext`上下文中有效。 |
+| [session](https://docs.spring.io/spring-framework/docs/current/reference/html/core.html#beans-factory-scopes-session) | 将单个bean定义的作用域限定为HTTP `session`的生命周期内。  仅在web感知的Spring `ApplicationContext`上下文中有效。 |
+| [application](https://docs.spring.io/spring-framework/docs/current/reference/html/core.html#beans-factory-scopes-application) | 将单个bean定义的作用域限定为`ServletContext`的生命周期内。  仅在web感知的Spring `ApplicationContext`上下文中有效。 |
+| [websocket](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#websocket-stomp-websocket-scope) | 将单个bean定义的作用域限定为`WebSocket`的生命周期内。  仅在web感知的Spring `ApplicationContext`上下文中有效。 |
+
+> 从Spring 3.0开始，线程作用域可用，但默认情况下未注册。 有关更多信息，请参见[SimpleThreadScope](https://docs.spring.io/spring-framework/docs/5.3.3/javadoc-api/org/springframework/context/support/SimpleThreadScope.html)文档。 有关如何注册此或任何其他自定义作用域的说明，请参阅自定义作用域。
+
+### 1.5.1. 单例作用域
+
+一个单例bean只有一个共享实例被管理，所有对具有一个或多个与该bean定义匹配的ID的bean的请求都会导致Spring容器返回一个特定的bean实例。
+
+换句话说，当您定义一个bean定义并将其定义为单例时，Spring IoC容器将为该bean定义所定义的对象创建一个实例。 该单个实例存储在此类单例bean的缓存中，并且对该命名bean的所有后续请求和引用都返回缓存的对象。 下图显示了单例作用域的工作方式：
+
+![singleton](https://docs.spring.io/spring-framework/docs/5.3.2/reference/html/images/singleton.png)
+
+Spring的单例bean概念与《Gang of Four (GoF)》一书中定义的单例模式不同。 GoF中的单例对对象的作用域进行硬编码，以使每个ClassLoader只能创建一个特定类的一个实例。 最好将Spring单例作用域描述为每个容器和每个bean。 这意味着，如果您在单个Spring容器中为特定类定义一个bean，则Spring容器将创建该bean定义所定义的类的一个且只有一个实例。 单例作用域是Spring中的默认作用域。 要在XML中定义单例bean，可以如以下示例所示定义bean：
+
+```xml
+<bean id="accountService" class="com.something.DefaultAccountService"/>
+
+<!-- the following is equivalent, though redundant (singleton scope is the default) -->
+<bean id="accountService" class="com.something.DefaultAccountService" scope="singleton"/>
+```
+
+### 1.5.2. 原型作用域
+
+每次请求特定bean时，非单例的原型作用域都会导致创建一个新的bean实例。 也就是说，该Bean被注入到另一个Bean中，或者您可以通过容器上的getBean（）方法调用来请求它。 通常，应将原型作用域用于所有有状态的Bean，将单例作用域用于无状态的Bean。
+
+下面的图表说明了Spring原型作用域
+
+![prototype](https://docs.spring.io/spring-framework/docs/5.3.2/reference/html/images/prototype.png)
+
+(数据访问对象(DAO)通常不被配置为原型，因为典型的DAO不持有任何会话状态。重用单例图的核心对我们来说更容易。)
+
+下面的示例在XML中将bean定义原型：
+
+```xml
+<bean id="accountService" class="com.something.DefaultAccountService" scope="prototype"/>
+```
+
+与其他作用域相反，Spring不管理原型Bean的完整生命周期。 容器实例化，配置或组装原型对象，然后将其交给客户端，而无需保持对该原型实例的进一步记录。 因此，尽管无论在什么作用于下都会在所有对象上调用初始化生命周期回调方法，但对于原型，则不会调用已配置的销毁生命周期回调。 客户端代码必须清除原型作用域内的对象，并释放原型Bean拥有的昂贵资源。 为了使Spring容器释放原型作用下的bean所拥有的资源，请尝试使用自定义bean后置处理器，该处理器包含对需要清理的bean的引用。
+
+在某些方面，Spring容器在原型作用域Bean方面的角色是Java new运算符的替代。 超过该点（也就是new之后）的所有生命周期管理必须由客户端处理。 （有关Spring容器中bean的生命周期的详细信息，请参阅生命周期回调。）
+
+### 1.5.3. 包含原型bean引用的单例beans
+
+当您使用对原型bean有依赖性的单例作用域Bean时，请注意，依赖关系在实例化时解析。 因此，如果将依赖的原型bean依赖项注入到单例bean中，则将实例化新的原型bean，然后将依赖项注入到单例bean中。 原型实例是曾经提供给单例bean的唯一实例。
+
+但是，假设您希望单例作用域的bean在运行时重复获取原型作用域的bean的新实例。 您不能将原型作用域的bean依赖注入到您的单例bean中，因为当Spring容器实例化单例bean并解析并注入其依赖项时，该注入仅发生一次。 如果在运行时不止一次需要原型bean的新实例，请参见[方法注入](###1.4.6. 方法注入)。
+
+### 1.5.4. Request, Session, Application, and WebSocket 作用域
+
+只有当您使用web感知的Spring ApplicationContext实现(如`XmlWebApplicationContext`)时，`request`,`session`, `application`, 和`websocket`作用域才可用。如果在常规的Spring IoC容器(如`ClassPathXmlApplicationContext`)中使用这些作用域，则会抛出一个未知bean作用域的`IllegalStateException`。
+
+#### 初始Web配置
 
 
 

@@ -18,7 +18,7 @@ Stream API是构建在通过传递代码使得操作行为实现参数化的思�
 
 比方说，你有一堆发票代码，格式类似于2013UK0001、2014US0002……前四位数代表年份， 接下来两个字母代表国家，最后四位是客户的代码。你可能想按照年份、客户代码，甚至国家来 对发票进行排序。你真正想要的是，能够给sort命令一个参数让用户定义顺序：给sort命令传 递一段独立代码。**Java8增加了把代码作为参数传递给另一个方法的能力**。
 
-![行为参数化](../../assets/Java8实战/行为参数化.jpg)
+![行为参数化](../assets/Java8实战/行为参数化.jpg)
 
 ## 1.3 并行与共享的可变数据
 
@@ -37,7 +37,7 @@ Stream API是构建在通过传递代码使得操作行为实现参数化的思�
 - 流的并行比使用线程同步更不易出错，流天生具有利用多核的优势。
 - **Collection主要是为了存储和访问数据，而Stream则主要用于描述对数据的计算**。
 
-![流并行](../../assets/Java8实战/流并行.png)
+![流并行](../assets/Java8实战/流并行.png)
 
 ## 1.6 默认方法
 
@@ -574,7 +574,7 @@ public interface Collector<T, A, R> {
 
 该方法必须返回在累积过程的最后要调用的一个函数，以便将累加器对象转换为整个集合操作的最终结果。如果结果无需转换，则只需返回`identity`函数
 
-![顺序归约](../../assets/Java8实战/顺序归约.png)
+![顺序归约](../assets/Java8实战/顺序归约.png)
 
 ### 5.5.4 combiner合并两个结果容器
 
@@ -748,7 +748,7 @@ public abstract class RecursiveTask<V> extends ForkJoinTask<V> {
 
 ```
 
-![forkjoin](../../assets/Java8实战/forkjoin.png)
+![forkjoin](../assets/Java8实战/forkjoin.png)
 
 > 使用多个ForkJoinPool是没有意义的，一般把它实例化一次，然后把实例保存在静态字段中，使之称为单例，这样就可以重用。
 
@@ -768,7 +768,7 @@ public abstract class RecursiveTask<V> extends ForkJoinTask<V> {
 
 应该让划分的子任务都用相同的时间完成，但是由于外部因素，如划分策略效率低、磁盘访问慢或是需要和外部服务协调执行，每个子任务所花的时间不尽相同。框架使用一种称为工作窃取（work stealing）的技术解决这个问题。
 
-![工作窃取](../../assets/Java8实战/工作窃取.png)
+![工作窃取](../assets/Java8实战/工作窃取.png)
 
 ## 6.4 Spliterator可分迭代器
 
@@ -795,7 +795,7 @@ public interace Spliterator<T> {
 
 ### 6.4.1 拆分过程
 
-![spliterator过程](../../assets/Java8实战/spliterator过程.png)
+![spliterator过程](../assets/Java8实战/spliterator过程.png)
 
 **Spliterator的特性**
 
@@ -978,7 +978,7 @@ LocalDate date4 = date3.plus(6, ChronoUnit.MONTHS);
 
 可以使用重载版本的with方法，向其传递一个提供了更多定制化选择的TemporalAdjuster对象，更 加 灵 活 地 处 理 日 期 。  
 
-![日期](../../assets/Java8实战/日期.png)
+![日期](../assets/Java8实战/日期.png)
 
 ****
 
@@ -1024,4 +1024,4 @@ DateTimeFormatter italianFormatter = new DateTimeFormatterBuilder()
 
 ## 11.5 处理不同的时区和历法
 
-![时区](../../assets/Java8实战/时区.png)
+![时区](../assets/Java8实战/时区.png)

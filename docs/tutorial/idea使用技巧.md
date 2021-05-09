@@ -15,3 +15,7 @@
 | Ctrl + shift + a       | 查找操作                           |
 | 双击shift              | 全局搜索                           |
 
+# 2.gengxin234
+```bash
+cd test
+```

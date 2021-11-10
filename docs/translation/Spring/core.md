@@ -2130,9 +2130,250 @@ Bean定义可以包含大量的配置信息，包括构造函数参数，属性�
 
 ## 1.8. 容器扩展点
 
+通常，应用程序开发者不需要子类化ApplicationContext实现类。相反，Spring IoC容器可以通过特殊的集成接口实现扩展。接下来的几节将介绍这些集成接口。
+
+###  1.8.1. 用`BeanPostProcessor`自定义Beans
+
+`BeanPostProcessor`接口定义了可以实现的回调方法，以提供自己的（或覆盖容器的默认）实例化逻辑，依赖解析逻辑等。如果要在Spring容器完成实例化，配置和初始化Bean后实现某些自定义逻辑，可以插入一个或多个自定义`BeanPostProcessor`实现。
+
+您可以配置多个`BeanPostProcessor`实例，您可以通过设置`order`属性来控制这些BeanPostProcessor实例运行的顺序。只有当`BeanPostProcessor`实现`Ordered`接口时，才能设置此属性。如果您编写自己的`BeanPostProcessor`，则应考虑实现`Ordered`接口。有关详细信息，请参阅[BeanPostProcessor](https://docs.spring.io/spring-framework/docs/5.3.2/javadoc-api/org/springframework/beans/factory/config/BeanPostProcessor.html)和[Ordered](https://docs.spring.io/spring-framework/docs/5.3.2/javadoc-api/org/springframework/core/Ordered.html)的Javadoc。另请参阅关于[BeanPostProcessor实例的程序化注册的说明](https://docs.spring.io/spring-framework/docs/5.3.2/reference/html/core.html#beans-factory-programmatically-registering-beanpostprocessors)。
+
+> :information_source:BeanPostProcessor实例在Bean（或Object）实例上运行。也就是说，Spring IoC容器实例化了一个bean实例，然后Beanbostprocessor实例执行它们的回调方法。
+>
+> BeanPostProcessor实例作用域是容器。仅当您使用容器层次结构时才起作用。如果在一个容器中定义BeanPostProcessor，则它仅在该容器中处理bean。换句话说，即使两个容器都是相同层次结构的一部分，在一个容器中定义的bean也不会被另一个容器中定义的BeanPostProcessor处理。
+
+该`org.springframework.beans.factory.config.BeanPostProcessor`接口包括正好两个回调方法。当此类被容器注册为后置处理器时，对于每个容器创建的bean实例，后处理器在容器初始化方法（例如`InitializationBean.afterPropertiesset()`或任何声明的`init`方法）被调用前，并在任何bean初始化回调之后调用。后处理器可以对bean实例执行任何操作，包括完全忽略回调。bean后置处理器通常检查回调接口，或者它可能会将bean包装为代理。一些Spring AOP基础架构类就是bean后处理器的实现，以提供代理包装逻辑。
+
+ApplicationContext将自动检测在配置元数据中定义的实现BeanPostProcessor接口的任何Bean。ApplicationContext将这些bean注册为后处理器，以便稍后可以在bean创建前被调用。Bean后处理器能以与任何其他bean相同的方式部署在容器中。
+
+注意，在配置类上使用`@Bean`工厂方法声明`BeanPostProcessor`时，工厂方法的返回类型应该是实现类本身或至少是org.springframework.beans.factory.config.beanpostProcessor接口，以清楚地表示该bean的后处理器性质。否则，ApplicationContext无法在完全创建它之前通过类型自动探测到它。由于需要提前实例化BeanPostProcessor以便在上下文中初始化其他Bean时应用处理器，因此该早期类型检测至关重要。
+
+> :information_source:以编程方式注册BeanPostProcessor实例
+>
+> 虽然BeanPostProcessor注册的推荐方法是通过ApplicationContext自动检测（如前所述），但您可以使用ConfigurableBeanFactory的`addBeanPostProcessor`方法进行编程方式注册。当您需要评估条件逻辑或甚至用于在层次结构中的上下文中复制bean后处理器时，这可能很有用。但请注意，`Ordered`接口对编程添加的BeanPostProcessor实例无效。在这里，执行顺序就是注册顺序。还要注意，无论任何指定的顺序如何，编程方式注册的BeanPostProcessor实例都会在通过自动检测注册的那些处理器之前之前执行。
 
 
 
+> :information_source:BeanPostProcessor实例和AOP自动代理
+>
+> 实现BeanPostProcessor接口的类是特殊的，容器会特殊处理。所有BeanPostProcessor实例和它们直接引用的Bean，在启动时都会作为ApplicationContext的特殊启动阶段的一部分。接下来，所有BeanPostProcessor实例都以指定的顺序注册，并应用于容器中的所有其他bean。由于AOP自动代理实现为BeanPostProcessor本身，因此BeanPostProcessor实例和它们直接引用的Bean都没有资格自动代理，因此，它们没有切面。
+>
+> 如果您使用autowiring或@Resource（可能autowiring失败）将beans装配到BeanPostProcessor中，则在搜索类型匹配的依赖候选时，Spring可能会得到错误的Bean，因此使其无法被自动代理或被其他后处理器处理。例如，如果您有被@Resource注解标注的依赖项，如字段或setter方法名与已声明名称的bean不直接对应且没有使用name属性的话，Spring搜索其他bean以按类型匹配它们。
+
+以下示例显示如何在ApplicationContext中编写，注册和使用BeanPostProcessor实例
+
+#### 例：Hell World, `BeanPostProcessor` -style
+
+第一个例子说明了基本用法。该示例显示了自定义BeanPostProcessor实现，该实现调用每个bean的toString()方法，它由容器创建并将生成的字符串打印到系统控制台。
+
+```java
+package scripting;
+
+import org.springframework.beans.factory.config.BeanPostProcessor;
+
+public class InstantiationTracingBeanPostProcessor implements BeanPostProcessor {
+
+    // simply return the instantiated bean as-is
+    public Object postProcessBeforeInitialization(Object bean, String beanName) {
+        return bean; // we could potentially return any object reference here...
+    }
+
+    public Object postProcessAfterInitialization(Object bean, String beanName) {
+        System.out.println("Bean '" + beanName + "' created : " + bean.toString());
+        return bean;
+    }
+}
+```
+
+以下beans元素使用InstantialTracingBeanPostProcessor：
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:lang="http://www.springframework.org/schema/lang"
+    xsi:schemaLocation="http://www.springframework.org/schema/beans
+        https://www.springframework.org/schema/beans/spring-beans.xsd
+        http://www.springframework.org/schema/lang
+        https://www.springframework.org/schema/lang/spring-lang.xsd">
+
+    <lang:groovy id="messenger"
+            script-source="classpath:org/springframework/scripting/groovy/Messenger.groovy">
+        <lang:property name="message" value="Fiona Apple Is Just So Dreamy."/>
+    </lang:groovy>
+
+    <!--
+    when the above bean (messenger) is instantiated, this custom
+    BeanPostProcessor implementation will output the fact to the system console
+    -->
+    <bean class="scripting.InstantiationTracingBeanPostProcessor"/>
+
+</beans>
+```
+
+请注意InstantialTracingBeanPostProcessor是如何被定义的。它甚至没有名字，而且因为它是一个bean，它可以像任何其他bean一样依赖注入。（前面的配置还定义了由Groovy脚本备份的bean。Spring动态语言支持在[此章节](https://docs.spring.io/spring-framework/docs/5.3.2/reference/html/languages.html#dynamic-language)中详述。）
+
+以下Java应用程序运行前面的代码和配置：
+
+```java
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.support.ClassPathXmlApplicationContext;
+import org.springframework.scripting.Messenger;
+
+public final class Boot {
+
+    public static void main(final String[] args) throws Exception {
+        ApplicationContext ctx = new ClassPathXmlApplicationContext("scripting/beans.xml");
+        Messenger messenger = ctx.getBean("messenger", Messenger.class);
+        System.out.println(messenger);
+    }
+
+}
+```
+
+前面应用程序的输出类似于以下内容：
+
+```java
+Bean 'messenger' created : org.springframework.scripting.groovy.GroovyMessenger@272961
+org.springframework.scripting.groovy.GroovyMessenger@272961
+```
+
+#### 例：`RequiredAnnotationBeanPostProcessor`
+
+使用回调接口或注解连接自定义BeanPostProcessor实现是扩展Spring IoC容器的常见方法。一个例子是Spring的`ResertandannotationBeanPostProcessor` - 一个Spring实现的BeanPostProcessor，它确保用（任意）注解标记的bean上的依赖注入属性实际上（被配置为)有值。
+
+### 1.8.2. 使用`BeanFactoryPostProcessor`自定义配置元数据
+
+我们查看的下一个扩展点是`org.springframework.beans.factory.config.BeanfactoryPostProcessor`。此接口的语义类似于BeanPostProcessor的语义，其中一个主要区别：BeanFactoryPostProcessor在操作的是Bean配置元数据。也就是说，Spring IoC容器允许BeanFactoryPostPostProcessor读取配置元数据，并且在容器实例化BeanFactoryPostProcessor实例之外的任何Bean之前可能会更改它。
+
+您可以配置多个`BeanFactoryPostProcessor `实例，您可以通过设置`order`属性来控制这些BeanFactoryPostProcessor实例运行的顺序。只有当`BeanFactoryPostProcessor `实现`Ordered`接口时，才能设置此属性。如果您编写自己的`BeanFactoryPostProcessor `，则应考虑实现`Ordered`接口。有关详细信息，请参阅[BeanFactoryPostProcessor](https://docs.spring.io/spring-framework/docs/5.3.2/javadoc-api/org/springframework/beans/factory/config/BeanFactoryPostProcessor.html)和[Ordered](https://docs.spring.io/spring-framework/docs/5.3.2/javadoc-api/org/springframework/core/Ordered.html)的Javadoc。
+
+> :information_source:如果要更改实际Bean实例（即，从配置元数据创建的对象），则需要使用BeanPostProcessor）。虽然技术上可以在BeanFactoryPostProcessor中使用bean实例（例如，通过使用BeanFactory.getBean()），但这样做会导致更早的bean实例化，违反标准容器生命周期。这可能导致负副作用，例如绕过Bean后处理。
+>
+> BeanFactoryPostProcessor实例作用域是容器。仅当您使用容器层次结构时才起作用。如果在一个容器中定义BeanFactoryPostProcessor，则它仅在该容器中处理bean元数据。换句话说，即使两个容器都是相同层次结构的一部分，在一个容器中bean的元数据也不会被另一个容器中定义的BeanFactoryPostProcessor处理。
+
+将自动运行在ApplicationContext中声明的Bean工厂后处理器，以便将更改应用于定义容器的配置元数据。Spring包括许多预定义的Bean工厂后处理器，例如`PropertyOverrideConfigurer`和`PropertySourcesPlaceholderConfigurer`。您还可以使用自定义BeanFactoryPostProcessor - 例如，注册自定义属性编辑器。
+
+ApplicationContext会自动检测部署在它中的任何实现了BeanFactoryPostPostPostPostor接口的Bean。它在适当的时间使用这些作为bean工厂后处理器的bean。您可以按照任何其他bean的方式部署这些后处理器bean。
+
+> :information_source:与BeanPostProcessor一样，您通常不希望配置BeanFactoryPostProcessors为延迟初始化。如果没有其他bean引用Bean(Factory)PostProcessor，则根本不会立即实例化。因此，将其标记为延时初始化将被忽略，并且即使在<bean />元素声明上将`default-lazy-init`属性设置为true，Bean(Factory)PostProcessor也会立即实例化。
+
+#### 例：类名称替换`PropertySourcesPlaceholderConfigurer`
+
+您可以通过`PropertySourcesPlaceholderConfigurer `使用标准Java `Properties`格式在单独文件中从Bean定义中外部化属性值。这样做使得部署应用程序的人能够自定义特定于环境的属性，例如数据库URL和密码，而无需担心修改容器的主要XML定义文件带来的复杂性或风险。
+
+考虑以下基于XML的配置元数据片段，其中定义了具有占位符值的数据源：
+
+```xml
+<bean class="org.springframework.context.support.PropertySourcesPlaceholderConfigurer">
+    <property name="locations" value="classpath:com/something/jdbc.properties"/>
+</bean>
+
+<bean id="dataSource" destroy-method="close"
+        class="org.apache.commons.dbcp.BasicDataSource">
+    <property name="driverClassName" value="${jdbc.driverClassName}"/>
+    <property name="url" value="${jdbc.url}"/>
+    <property name="username" value="${jdbc.username}"/>
+    <property name="password" value="${jdbc.password}"/>
+</bean>
+```
+
+该示例显示了从外部属性文件配置的属性。在运行时，`PropertySourcePlaceHolterConfigurer`应用于替换数据源的某些属性的元数据。要替换的值被指定为$ {property-name}的占位符形式，它遵循Ant和log4j和JSP EL 风格。
+
+实际值来自标准Java  `Properties`格式的另一个文件：
+
+```properties
+jdbc.driverClassName=org.hsqldb.jdbcDriver
+jdbc.url=jdbc:hsqldb:hsql://production:9002
+jdbc.username=sa
+jdbc.password=root
+```
+
+因此，$ {jdbc.username}字符串在运行时替换为'sa'，属性文件中其他占位符值也一样按键值匹配替换。`PropertySourcesPlaceholderConfigurer`检查在Bean定义的大多数属性中的占位符。**此外，您可以自定义占位符前缀和后缀。**
+
+使用Spring 2.5中引入的上下文命名空间，您可以使用专用配置元素配置属性占位符。您可以在`location`属性中提供一个或多个位置作为逗号分隔的列表，如以下示例显示：
+
+```xml
+<context:property-placeholder location="classpath:com/something/jdbc.properties"/>
+```
+
+该`PropertySourcesPlaceholderConfigurer`不仅会在你指定的`Properties`文件中查找。默认情况下，如果不能在指定的属性文件中找到属性，它会针对Spring `Environment`属性配置和普通的Java  `System`属性配置进行查找。
+
+> :bulb:您可以使用PropertySourcePlaceHolderConfigurer来替换类名，当您必须在运行时选择特定实现类时有用。以下示例显示了如何执行此操作：
+>
+> ```xml
+> <bean class="org.springframework.beans.factory.config.PropertySourcesPlaceholderConfigurer">
+>     <property name="locations">
+>         <value>classpath:com/something/strategy.properties</value>
+>     </property>
+>     <property name="properties">
+>         <value>custom.strategy.class=com.something.DefaultStrategy</value>
+>     </property>
+> </bean>
+> 
+> <bean id="serviceStrategy" class="${custom.strategy.class}"/>
+> ```
+>
+> 如果在运行时无法在运行时解析到有效类别，则在将要创建时（对于非懒加载bean，ApplicationContext的preInstantiateSingletons()阶段），Bean解析失败。
+
+#### 例：`PropertyOverrideConfigurer`
+
+PropertyOverrideConfigurer，另一个bean factory后处理器，类似于PropertySourcePlaceHolderConfigurer，但与后者不同，原始定义可以具有默认值或根本没有值作为bean的属性。如果覆盖的Properties文件没有某些bean属性的条目，则使用默认上下文定义。
+
+请注意，bean定义无法感知被覆盖，因此覆盖的配置应用于XML定义文件不会显而易见。如果有多个PropertyOverrideConfigurer实例定义相同的bean属性的不同值，由于覆盖机制只会使用最后一个。
+
+属性文件配置行采用以下格式：
+
+```properties
+beanName.property=value
+```
+
+以下列表显示了格式的示例：
+
+```properties
+dataSource.driverClassName=com.mysql.jdbc.Driver
+dataSource.url=jdbc:mysql:mydb
+```
+
+此示例文件可以与包含一个名为dataSource的bean的容器定义一起使用，其中包含driver和url属性。
+
+还支持复合属性名称，只要除了被覆盖的最终属性之外的路径上的的每个组件都是非空的（可能由构造函数初始化）。在以下示例中，tom bean的fred属性的bob属性的sammy属性设置为常量123：
+
+```properties
+tom.fred.bob.sammy=123
+```
+
+> :information_source:指定的覆盖值始终是字面量。它们不会翻译成bean引用。此约定还适用于XML Bean定义中的原始值指定为bean引用时。
+
+在Spring 2.5中引入的上下文命名空间，可以使用专用配置元素配置属性覆盖，如以下示例显示：
+
+```xml
+<context:property-override location="classpath:override.properties"/>
+```
+
+
+
+### 1.8.3. 使用`FactoryBean`自定义实例化逻辑
+
+本身是工厂的对象可以实现`org.springframework.beans.factory.FactoryBean `接口。
+
+`FactoryBean`接口是Spring IoC容器的实例化逻辑的可插拔点。如果您有复杂的初始化代码，则在Java中可以比冗长的（可能）XML更好地表达，您可以创建自己的`FactoryBean`，在该类中写入复杂的初始化逻辑，然后将您的自定义`FactoryBean`插入容器中。
+
+FactoryBean接口提供三个方法：
+
+- `Object getObject()`：返回此工厂创建的对象的实例。实例可能会被共享，具体取决于此出厂是否返回单例或原型。
+
+- `boolean isSingleton()`：如果FactoryBean返回单例bean此方法返回true否则返回false。
+
+- `Class getObjectType()`：返回`getObject()`方法返回的对象类型，如果类型不能提前推断则返回`null`。
+
+`FactoryBean`思想和接口用于Spring框架内的许多地方。spring内部就有`FactoryBean`接口的50多个实现。
+
+当您需要询问实际FactoryBean实例而不是它生成的bean时，请在调用ApplicationContext的getBean()方法时使用and符号（＆）前缀。对于给定的FactoryBean，调用容器上的getBean("myBean")返回FactoryBean产生的bean，而调用getBean("&myBean")返回FactoryBean实例本身。
+
+
+
+## 1.9. 基于注解的容器配置
 
 
 

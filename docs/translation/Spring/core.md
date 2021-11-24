@@ -2375,6 +2375,341 @@ FactoryBean接口提供三个方法：
 
 ## 1.9. 基于注解的容器配置
 
+> 基于注解的配置是否比基于XML的配置更好？
+>
+> 基于注解的配置引出了此问题。长话短说是“得看情况”。也就是说，每种方法都有其利弊。而且通常由开发人员决定哪种策略更适合他们。由于它们的定义方式，注解在他们的声明中提供了上下文，所以配置更短更简练。但是，XML配置的优势是不侵入源代码或不需要重新编译它们。一些开发人员喜欢注解的方式，而其他开发人员则认为被注解的类不再是POJO，而且这会使得配置变得分散，更难控制。
+>
+> 无论哪种选择，Spring都可以兼容这两种风格，甚至将它们混合在一起。值得注意的是，通过其[JavaConfig](https://docs.spring.io/spring-framework/docs/5.3.2/reference/html/core.html#beans-java)选项，Spring让注解以非侵入性方式使用，而无需接触目标组件源代码，并且在工具方面，所有配置样式都支持[Eclipse的Spring Tools](https://spring.io/tools)支持。
+
+
+
+基于注解的配置提供了XML配置的替代方法，它依赖于要装配的组件而不是用尖括号声明的字节码元数据。开发者通过在相关类，方法或字段声明上使用注解，将配置移动到组件类自身中而不是使用XML。如示例[RequiredAnnotationBeanPostProcessor](https://docs.spring.io/spring-framework/docs/5.3.2/reference/html/core.html#beans-factory-extension-bpp-examples-rabpp)，使用BeanPostProcessor与注解结合是扩展Spring IoC容器的常见方法。例如，Spring 2.0引入了@Required注解，使得强制依赖属性成为可能。Spring 2.5使得可以遵循相同的一般方法来驱动Spring的依赖注入。本质上，@Autowired注释提供了相同的能力，如[Autowiring](https://docs.spring.io/spring-framework/docs/5.3.2/reference/html/core.html#beans-factory-autowire)所述，但具有更细粒度的控制和更广泛的适用性。Spring 2.5还增加了对JSR-250注解的支持，例如@PostConstruct和@PreDestroy。Spring 3.0添加了包含在`javax.inject`中的支持JSR-330（Java依赖注入）的注解，例如`@Inject`和`@Named`。有关这些注解的详细信息可以在[相关章节](https://docs.spring.io/spring-framework/docs/5.3.2/reference/html/core.html#beans-standard-annotations)中找到。
+
+> :information_source:基于注解的注入在XML注入之前进行。因此，基于XML的配置覆盖了通过两种方法属性的装配。
+
+当然，您可以将它们注册为单独的bean定义，但也可以通过在基于XML的Spring配置中包含以下标签来隐式注册（注意包含context命名空间）：
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:context="http://www.springframework.org/schema/context"
+    xsi:schemaLocation="http://www.springframework.org/schema/beans
+        https://www.springframework.org/schema/beans/spring-beans.xsd
+        http://www.springframework.org/schema/context
+        https://www.springframework.org/schema/context/spring-context.xsd">
+
+    <context:annotation-config/>
+
+</beans>
+```
+
+(隐式注册的后处理器包括[`AutowiredAnnotationBeanPostProcessor`](https://docs.spring.io/spring-framework/docs/5.3.2/javadoc-api/org/springframework/beans/factory/annotation/AutowiredAnnotationBeanPostProcessor.html), [`CommonAnnotationBeanPostProcessor`](https://docs.spring.io/spring-framework/docs/5.3.2/javadoc-api/org/springframework/context/annotation/CommonAnnotationBeanPostProcessor.html), [`PersistenceAnnotationBeanPostProcessor`](https://docs.spring.io/spring-framework/docs/5.3.2/javadoc-api/org/springframework/orm/jpa/support/PersistenceAnnotationBeanPostProcessor.html),[`RequiredAnnotationBeanPostProcessor`](https://docs.spring.io/spring-framework/docs/5.3.2/javadoc-api/org/springframework/beans/factory/annotation/RequiredAnnotationBeanPostProcessor.html), [`CommonAnnotationBeanPostProcessor`](https://docs.spring.io/spring-framework/docs/5.3.2/javadoc-api/org/springframework/context/annotation/CommonAnnotationBeanPostProcessor.html), [`PersistenceAnnotationBeanPostProcessor`](https://docs.spring.io/spring-framework/docs/5.3.2/javadoc-api/org/springframework/orm/jpa/support/PersistenceAnnotationBeanPostProcessor.html), [`RequiredAnnotationBeanPostProcessor`](https://docs.spring.io/spring-framework/docs/5.3.2/javadoc-api/org/springframework/beans/factory/annotation/RequiredAnnotationBeanPostProcessor.html).)
+
+> :information_source:<context:annotation-config />仅查找在定义它的同一应用程序上下文中的注解。这意味着，如果将<context:annotation-config />放在DispatcherServlet的WebApplicationContext中，则只会扫描Controller中的@Autowired 注解的bean。有关更多信息，请参阅[DispatcherServlet](https://docs.spring.io/spring-framework/docs/5.3.2/reference/html/web.html#mvc-servlet)。
+
+
+
+### 1.9.1. @Required
+
+@Required注解适用于bean属性setter方法，如下例所示：
+
+```java
+public class SimpleMovieLister {
+
+    private MovieFinder movieFinder;
+
+    @Required
+    public void setMovieFinder(MovieFinder movieFinder) {
+        this.movieFinder = movieFinder;
+    }
+
+    // ...
+}
+```
+
+此注解表示必须通过Bean定义中的显式属性值或通过自动装配在配置bean时填充bean的属性。如果尚未填充受注解影响的bean属性，则该容器会抛出异常。这允许更早的失败，避免了后续的NullPointerException等。**我们仍然建议您将断言放入Bean类本身（例如，init方法）**。这样做即使在容器外部使用类时，也可以拿到所需的引用和值。
+
+> :information_source:@Required在Spring Framework 5.1中正式过时，支持使用构造函数注入所需的设置（或InitializingBean.afterPropertiesSet()的自定义实现以及Bean属性的setter实现）。
+
+### 1.9.2. 使用@Autowired
+
+> :information_source:JSR 330的@Inject注解可以用于代替本节中包含的示例中的Spring @Autowired注释。有关详细信息，请参阅[此处](https://docs.spring.io/spring-framework/docs/5.3.2/reference/html/core.html#beans-standard-annotations)。
+
+你可以应用`@Autowired`注解于构造器，就像下面这样：
+
+```java
+public class MovieRecommender {
+
+    private final CustomerPreferenceDao customerPreferenceDao;
+
+    @Autowired
+    public MovieRecommender(CustomerPreferenceDao customerPreferenceDao) {
+        this.customerPreferenceDao = customerPreferenceDao;
+    }
+
+    // ...
+}
+```
+
+> :information_source:截至Spring Framework 4.3，如果目标bean仅定义一个构造函数，则不再需要在此构造函数上用@Autowired注解。但是，如果有多个构造函数并且没有主/默认构造函数，则至少有一个构造函数必须用@Autowired注解，以指示容器使用哪一个构造器。
+
+你也可以像下面这样应用`@Autowired`注解于传统setter方法：
+
+```JAVA
+public class SimpleMovieLister {
+
+    private MovieFinder movieFinder;
+
+    @Autowired
+    public void setMovieFinder(MovieFinder movieFinder) {
+        this.movieFinder = movieFinder;
+    }
+
+    // ...
+}
+```
+
+你还可以像下面这样应用`@Autowired`注解于任意名称和多参数的方法：
+
+```java
+public class MovieRecommender {
+
+    private MovieCatalog movieCatalog;
+
+    private CustomerPreferenceDao customerPreferenceDao;
+
+    @Autowired
+    public void prepare(MovieCatalog movieCatalog,
+            CustomerPreferenceDao customerPreferenceDao) {
+        this.movieCatalog = movieCatalog;
+        this.customerPreferenceDao = customerPreferenceDao;
+    }
+
+    // ...
+}
+```
+
+你也可以将@Autowired应用于字段，甚至将其与构造函数混合，如以下示例所示：
+
+```java
+public class MovieRecommender {
+
+    private final CustomerPreferenceDao customerPreferenceDao;
+
+    @Autowired
+    private MovieCatalog movieCatalog;
+
+    @Autowired
+    public MovieRecommender(CustomerPreferenceDao customerPreferenceDao) {
+        this.customerPreferenceDao = customerPreferenceDao;
+    }
+
+    // ...
+}
+```
+
+> :bulb:确保您的目标组件（例如，MovieCatalog或CustomerPreferenceDao）和用@ Autowired注解的注入点的类型声明一致。否则，运行时可能因类型不匹配而注入失败。
+>
+> 对于通过类路径扫描找到的XML定义的bean或组件类，容器通常预先知道确切的类型。但是，对于@Bean工厂方法，您需要确保声明的返回类型是足够明确的。对于实现多个接口或可能由其实现类型引用的组件，考虑在工厂方法上声明最具体的返回类型（至少跟注入点需要的类型一样）。
+
+您还可以将@Autowired注解添加到期望得到该类型数组的字段或方法上，让Spring从ApplicationContext返回所有这种类型的bean，如下所示：
+
+```java
+public class MovieRecommender {
+
+    @Autowired
+    private MovieCatalog[] movieCatalogs;
+
+    // ...
+}
+```
+
+类型集合也是一样：
+
+```java
+public class MovieRecommender {
+
+    private Set<MovieCatalog> movieCatalogs;
+
+    @Autowired
+    public void setMovieCatalogs(Set<MovieCatalog> movieCatalogs) {
+        this.movieCatalogs = movieCatalogs;
+    }
+
+    // ...
+}
+```
+
+> :bulb:如果您希望以特定顺序排序数组或列表中的元素，您的目标bean可以实现`org.springframework.core.Ordered`接口或使用`@Order`或标准`@Priority`注解。否则，它们的顺序跟容器中定义的目标bean的注册顺序一样。
+>
+> 您可以针对单个bean定义（如果有多个使用相同的bean类的定义）在目标类级别和@Bean方法中声明@Order注解。@Order值可能会影响注入点的优先级，但请注意它们不会影响单例的启动顺序，这是由依赖关系和@DependsOn声明决定的问题。
+>
+> 请注意，标准`javax.annotation.Priority`注解在@Bean级别不可用，因为它无法在方法中声明。它的语义跟通过@Order值与每种类型的单个bean上的@Primary组合类似。
+
+只要预期的key类型为String，即使是Map实例也可以自动注入。映射值包含预期类型的所有bean，键包含相应的bean名称，如以下示例所示：
+
+```java
+public class MovieRecommender {
+
+    private Map<String, MovieCatalog> movieCatalogs;
+
+    @Autowired
+    public void setMovieCatalogs(Map<String, MovieCatalog> movieCatalogs) {
+        this.movieCatalogs = movieCatalogs;
+    }
+
+    // ...
+}
+```
+
+默认情况下，当没有匹配的候选bean可用于给定注入点时，自动注入失败。在声明的数组，集合或映射的情况下，预期至少有一个匹配的元素。
+
+默认行为是将带注解的方法和字段视为必须的依赖项。您可以通过以下示例中演示更改此行为，使框架能够让其变为非必须的来跳过一个不满足依赖的注入点（即，通过将@Autowired中的required属性设置为false)：
+
+```java
+public class SimpleMovieLister {
+
+    private MovieFinder movieFinder;
+
+    @Autowired(required = false)
+    public void setMovieFinder(MovieFinder movieFinder) {
+        this.movieFinder = movieFinder;
+    }
+
+    // ...
+}
+```
+
+如果它的依赖项（或在多个参数的情况下）不可用，则不会调用此非必需的方法。在这种情况下，非必须的字段不会填充，会用其默认值代替。
+
+被注入的构造器和工厂方法参数是一个特殊情况，因为@Autowired中required属性由于Spring的构造函数解析算法可能潜在地处理多个构造函数，因此具有稍微不同的含义。默认情况下构造器和工厂方法参数是必须的，但在单个构造函数场景中有一些特殊规则，例如多元素注入点（数组，集合，映射），如果没有可匹配的bean，则解析为空实例。这允许常见的实现模式，其中所有依赖关系都可以在唯一的多参数构造函数中声明 - 例如，在没有@Autowired注解的情况下被声明为单个公共构造函数。
+
+> :information_source:给定bean只有一个构造函数可以被required=true的@Autowired声明，表明这个构造器是其作为Spring bean要注入的构造器。因此，如果其required属性为默认值true，则只有单个构造函数可以用@Autowired注解声明。如果多个构造函数声明了这个注解，则它们都必须将required设置为false，以便被视为用于自动装配的候选者（类似于XML中的autowire=constructor）。Spring容器将选择能最大满足依赖的构造器。如果候选者没有一个满足的，则将使用主/默认构造函数（如果存在）。同样，如果类声明多个构造函数，但都没有声明@Autowired注解，则将使用主/默认构造函数（如果存在）。如果类仅声明单个构造函数，即使没有注解，也将始终使用它。请注意，注解声明的构造函数修饰符不必为public。
+>
+> 在setter方法上建议使用@Autowired的required属性而不是已弃用的@Required注解。将required属性设置为false表示自动注入目标不是必须的，如果它无法自动注入则将忽略该属性。另一方面，@Required强制属性设置，无论用容器支持的什么手段，如果没有定义任何值，则会抛出相应的异常。
+
+或者，您可以通过Java 8的`java.util.options`表示特定依赖的非必要性质，如以下示例所示：
+
+```java
+public class SimpleMovieLister {
+
+    @Autowired
+    public void setMovieFinder(Optional<MovieFinder> movieFinder) {
+        ...
+    }
+}
+```
+
+截至Spring Framework 5.0，您也可以使用@Nullable注释（任何包中的任何类型 - 例如，JSR-305中的`javax.annotation.Nullable`）或只是利用Kotlin内置的空安全支持：
+
+```java
+public class SimpleMovieLister {
+
+    @Autowired
+    public void setMovieFinder(@Nullable MovieFinder movieFinder) {
+        ...
+    }
+}
+```
+
+您还可以使用@Autowired用于众所周知的可解析依赖性的接口：BeanFactory，ApplicationContext，Environment，ResourceLoader，ApplicationEventPublisher和MessageSource。这些接口及其扩展接口（例如ConfigurableApplicationContext或ResourcePatternResolver）会自动解析，无需特殊设置。以下示例注入ApplicationContext对象：
+
+```java
+public class MovieRecommender {
+
+    @Autowired
+    private ApplicationContext context;
+
+    public MovieRecommender() {
+    }
+
+    // ...
+}
+```
+
+> :information_source:@Autowired，@Inject，@Value和@Resource注解由Spring BeanPostProcessor实现处理。这意味着您无法在您自己的BeanPostProcessor或BeanFactoryPostProcessor类型中应用这些注解（如果有）。这些类型必须通过使用XML或Spring @Bean方法显式注入。
+
+### 1.9.3.  使用@Primary调整基于注解的自动注入
+
+因为按类型的自动注入可能有多个候选者，所以通常需要更精细地控制选择过程。实现这一目标的一种方法是Spring的@Primary注解。@Primary表示当单值依赖有多个候选者时，应给出注入bean的首选项。如果候选者中存在一个主bean，则它将成为自动注入的值。
+
+就像以下配置，将FirstMovieCatalog定义为MovieCatalog类型的主bean：
+
+```java
+@Configuration
+public class MovieConfiguration {
+
+    @Bean
+    @Primary
+    public MovieCatalog firstMovieCatalog() { ... }
+
+    @Bean
+    public MovieCatalog secondMovieCatalog() { ... }
+
+    // ...
+}
+```
+
+使用前面的配置，下面的MovieRecommender将注入firstMovieCatalog：
+
+```java
+public class MovieRecommender {
+
+    @Autowired
+    private MovieCatalog movieCatalog;
+
+    // ...
+}
+```
+
+相应的bean定义如下：
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:context="http://www.springframework.org/schema/context"
+    xsi:schemaLocation="http://www.springframework.org/schema/beans
+        https://www.springframework.org/schema/beans/spring-beans.xsd
+        http://www.springframework.org/schema/context
+        https://www.springframework.org/schema/context/spring-context.xsd">
+
+    <context:annotation-config/>
+
+    <bean class="example.SimpleMovieCatalog" primary="true">
+        <!-- inject any dependencies required by this bean -->
+    </bean>
+
+    <bean class="example.SimpleMovieCatalog">
+        <!-- inject any dependencies required by this bean -->
+    </bean>
+
+    <bean id="movieRecommender" class="example.MovieRecommender"/>
+
+</beans>
+```
+
+
+
+### 1.9.4.  使用@Qualifiers调整基于注解的自动注入
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

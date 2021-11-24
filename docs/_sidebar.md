@@ -1,6 +1,8 @@
 - 文档翻译
   - Spring
     - [Spring Core](/translation/Spring/core.md)
+  - RabbitMQ
+    - [AMQP 0-9-1模型](//translation/RabbitMQ/AMQP 0-9-1模型.md)
 - 开发指南
   - [IDEA使用技巧](/tutorial/idea使用技巧.md)
   - [vscode使用技巧](/tutorial/vscode使用技巧.md)

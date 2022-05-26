@@ -26,6 +26,7 @@ module.exports = {
         text: '文档翻译', items: [
           { text: 'Spring Framwork', items: [
             { text: 'Spring Core', link: '/pages/spring/core/' },
+            { text: 'Spring Testing', link: '/pages/spring/testing/' },
             ] 
           },
           {
